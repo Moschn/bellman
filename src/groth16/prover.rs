@@ -2,7 +2,7 @@ use rand::Rng;
 
 use std::sync::Arc;
 
-use futures::Future;
+// use futures::Future;
 
 use pairing::{
     Engine,
@@ -309,22 +309,22 @@ pub fn create_proof<E, C, P: ParameterSource<E>>(
         g_c.add_assign(&vk.alpha_g1.mul(s));
         g_c.add_assign(&vk.beta_g1.mul(r));
     }
-    let mut a_answer = a_inputs.wait()?;
-    a_answer.add_assign(&a_aux.wait()?);
+    let mut a_answer = a_inputs;
+    a_answer.add_assign(&a_aux);
     g_a.add_assign(&a_answer);
     a_answer.mul_assign(s);
     g_c.add_assign(&a_answer);
 
-    let mut b1_answer = b_g1_inputs.wait()?;
-    b1_answer.add_assign(&b_g1_aux.wait()?);
-    let mut b2_answer = b_g2_inputs.wait()?;
-    b2_answer.add_assign(&b_g2_aux.wait()?);
+    let mut b1_answer = b_g1_inputs;
+    b1_answer.add_assign(&b_g1_aux);
+    let mut b2_answer = b_g2_inputs;
+    b2_answer.add_assign(&b_g2_aux);
 
     g_b.add_assign(&b2_answer);
     b1_answer.mul_assign(r);
     g_c.add_assign(&b1_answer);
-    g_c.add_assign(&h.wait()?);
-    g_c.add_assign(&l.wait()?);
+    g_c.add_assign(&h);
+    g_c.add_assign(&l);
 
     Ok(Proof {
         a: g_a.into_affine(),

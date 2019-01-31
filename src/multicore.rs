@@ -4,80 +4,43 @@
 //! crossbeam but may be extended in the future to
 //! allow for various parallelism strategies.
 
-use num_cpus;
-use futures::{Future, IntoFuture, Poll};
-use futures_cpupool::{CpuPool, CpuFuture};
-use crossbeam::{self, Scope};
-
 #[derive(Clone)]
-pub struct Worker {
-    cpus: usize,
-    pool: CpuPool
-}
+pub struct Worker {}
 
 impl Worker {
     // We don't expose this outside the library so that
     // all `Worker` instances have the same number of
     // CPUs configured.
-    pub(crate) fn new_with_cpus(cpus: usize) -> Worker {
-        Worker {
-            cpus: cpus,
-            pool: CpuPool::new(cpus)
-        }
+    pub(crate) fn new_with_cpus() -> Worker {
+        Worker {}
     }
 
     pub fn new() -> Worker {
-        Self::new_with_cpus(num_cpus::get())
+        // Self::new_with_cpus(num_cpus::get())
+        Self::new_with_cpus()
     }
 
     pub fn log_num_cpus(&self) -> u32 {
-        log2_floor(self.cpus)
+        0
     }
 
-    pub fn compute<F, R>(
-        &self, f: F
-    ) -> WorkerFuture<R::Item, R::Error>
-        where F: FnOnce() -> R + Send + 'static,
-              R: IntoFuture + 'static,
-              R::Future: Send + 'static,
-              R::Item: Send + 'static,
-              R::Error: Send + 'static
+    pub fn scope<F, R>(&self, elements: usize, f: F) -> R
+    where
+        F: FnOnce(&Scope, usize) -> R,
     {
-        WorkerFuture {
-            future: self.pool.spawn_fn(f)
-        }
-    }
-
-    pub fn scope<'a, F, R>(
-        &self,
-        elements: usize,
-        f: F
-    ) -> R
-        where F: FnOnce(&Scope<'a>, usize) -> R
-    {
-        let chunk_size = if elements < self.cpus {
-            1
-        } else {
-            elements / self.cpus
-        };
-
-        crossbeam::scope(|scope| {
-            f(scope, chunk_size)
-        })
+        let scope: Scope = Scope{};
+        f(&scope, elements)
     }
 }
 
-pub struct WorkerFuture<T, E> {
-    future: CpuFuture<T, E>
-}
+pub struct Scope {}
 
-impl<T: Send + 'static, E: Send + 'static> Future for WorkerFuture<T, E> {
-    type Item = T;
-    type Error = E;
-
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error>
+impl Scope {
+    pub fn spawn<F>(&self, f: F)
+    where
+        F: FnOnce(),
     {
-        self.future.poll()
+        f()
     }
 }
 
@@ -86,7 +49,7 @@ fn log2_floor(num: usize) -> u32 {
 
     let mut pow = 0;
 
-    while (1 << (pow+1)) <= num {
+    while (1 << (pow + 1)) <= num {
         pow += 1;
     }
 
@@ -103,4 +66,45 @@ fn test_log2_floor() {
     assert_eq!(log2_floor(6), 2);
     assert_eq!(log2_floor(7), 2);
     assert_eq!(log2_floor(8), 3);
+}
+
+#[test]
+fn test_worker_square() {
+    let worker = self::Worker::new();
+    let mut input = [1, 2, 3, 4];
+
+    worker.scope(input.len(), |scope, chunk| {
+        for a in input.chunks_mut(chunk) {
+            scope.spawn(move || {
+                for b in a {
+                    *b = *b + *b;
+                }
+            });
+        }
+    });
+    assert_eq!(input[0], 2);
+    assert_eq!(input[1], 4);
+    assert_eq!(input[2], 6);
+    assert_eq!(input[3], 8);
+}
+
+#[test]
+fn test_worker_mult() {
+    let worker = self::Worker::new();
+    
+    let mut input = [1, 2, 3, 4, -5, 123];
+    let saved = input.clone();
+
+    worker.scope(input.len(), |scope, chunk| {
+        for a in input.chunks_mut(chunk) {
+            scope.spawn(move || {
+                for b in a {
+                    *b = *b * *b;
+                }
+            });
+        }
+    });
+    for i in 0..input.len() {
+        assert_eq!(input[i], saved[i]* saved[i]);
+    }
 }

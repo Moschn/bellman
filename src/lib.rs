@@ -1,10 +1,10 @@
 extern crate pairing;
 extern crate rand;
-extern crate num_cpus;
-extern crate futures;
-extern crate futures_cpupool;
+// extern crate num_cpus;
+// extern crate futures;
+// extern crate futures_cpupool;
 extern crate bit_vec;
-extern crate crossbeam;
+// extern crate crossbeam;
 extern crate byteorder;
 
 pub mod multicore;

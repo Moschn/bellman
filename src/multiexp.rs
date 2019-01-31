@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::io;
 use bit_vec::{self, BitVec};
 use std::iter;
-use futures::{Future};
+// use futures::{Future};
 use super::multicore::Worker;
 
 use super::SynthesisError;
@@ -145,7 +145,7 @@ fn multiexp_inner<Q, D, G, S>(
     mut skip: u32,
     c: u32,
     handle_trivial: bool
-) -> Box<Future<Item=<G as CurveAffine>::Projective, Error=SynthesisError>>
+) -> Box<<G as CurveAffine>::Projective>
     where for<'a> &'a Q: QueryDensity,
           D: Send + Sync + 'static + Clone + AsRef<Q>,
           G: CurveAffine,
@@ -157,7 +157,7 @@ fn multiexp_inner<Q, D, G, S>(
         let exponents = exponents.clone();
         let density_map = density_map.clone();
 
-        pool.compute(move || {
+        let t = move || -> Result<<G as CurveAffine>::Projective, SynthesisError> {
             // Accumulate the result
             let mut acc = G::Projective::zero();
 
@@ -206,7 +206,8 @@ fn multiexp_inner<Q, D, G, S>(
             }
 
             Ok(acc)
-        })
+        };
+        t().unwrap()
     };
 
     skip += c;
@@ -217,17 +218,24 @@ fn multiexp_inner<Q, D, G, S>(
     } else {
         // There's another region more significant. Calculate and join it with
         // this region recursively.
+        let mut second = multiexp_inner(pool, bases, density_map, exponents, skip, c, false);
+        for _ in 0..c {
+            second.double();
+        }
+        second.add_assign(&this);
+        
         Box::new(
-            this.join(multiexp_inner(pool, bases, density_map, exponents, skip, c, false))
-                .map(move |(this, mut higher)| {
-                    for _ in 0..c {
-                        higher.double();
-                    }
+            *second
+            // this.join(multiexp_inner(pool, bases, density_map, exponents, skip, c, false))
+            //     .map(move |(this, mut higher)| {
+            //         for _ in 0..c {
+            //             higher.double();
+            //         }
 
-                    higher.add_assign(&this);
+            //         higher.add_assign(&this);
 
-                    higher
-                })
+            //         higher
+            //     })
         )
     }
 }
@@ -239,7 +247,7 @@ pub fn multiexp<Q, D, G, S>(
     bases: S,
     density_map: D,
     exponents: Arc<Vec<<<G::Engine as Engine>::Fr as PrimeField>::Repr>>
-) -> Box<Future<Item=<G as CurveAffine>::Projective, Error=SynthesisError>>
+) -> Box<<G as CurveAffine>::Projective>
     where for<'a> &'a Q: QueryDensity,
           D: Send + Sync + 'static + Clone + AsRef<Q>,
           G: CurveAffine,
@@ -297,7 +305,7 @@ fn test_with_bls12() {
         (g, 0),
         FullDensity,
         v
-    ).wait().unwrap();
+    );
 
-    assert_eq!(naive, fast);
+    assert_eq!(naive, *fast);
 }
